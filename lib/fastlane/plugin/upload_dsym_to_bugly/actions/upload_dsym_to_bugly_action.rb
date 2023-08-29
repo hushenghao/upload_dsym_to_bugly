@@ -13,26 +13,39 @@ module Fastlane
         jar_path = File.expand_path('../../jars/buglyqq-upload-symbol.jar', __FILE__)
         UI.message "jar path: #{jar_path}"
 
-        file_path = File.expand_path("#{params[:file_path]}")
-        UI.message "file path: #{file_path}"
+        mapping_file_path = nil
+        if params[:mapping_file_path]
+          mapping_file_path = File.expand_path("#{params[:mapping_file_path]}")
+        end
+        UI.message "mapping file path: #{mapping_file_path}"
 
-        unzip_path = File.expand_path(".upload_dsym_to_bugly_tmp", "#{File.dirname("#{file_path}")}") 
+        file_path = nil
+        unzip_path = nil
+        if params[:file_path]
+          file_path = File.expand_path("#{params[:file_path]}")
+          unzip_path = File.expand_path(".upload_dsym_to_bugly_tmp", "#{File.dirname("#{file_path}")}") 
+
+          if Dir.exist?(unzip_path)
+            FileUtils.rm_r(unzip_path, force: true)
+          end
+        end 
+        UI.message "file path: #{file_path}"
         UI.message "unzip path: #{unzip_path}"
 
-        if Dir.exist?(unzip_path)
-          FileUtils.rm_r(unzip_path, force: true)
-        end
+        has_mapping = mapping_file_path != nil && !Dir.glob(mapping_file_path).empty?
+        has_symbol = file_path != nil && !Dir.glob(file_path).empty?
 
-        if !Dir.glob(file_path).empty?
-            sh("unzip -o \"#{file_path}\" -d \"#{unzip_path}\"")
-        else
-          UI.message "dSYM zip File don't exist"
+        if !has_mapping && !has_symbol
+          UI.message "dSYM zip or mapping.txt File don't exist"
           Actions.lane_context[SharedValues::UPLOAD_DSYM_TO_BUGLY_RESULT] = false
           raise if params[:raise_if_error]
         end
+        if has_symbol
+          sh("unzip -o \"#{file_path}\" -d \"#{unzip_path}\"")
+        end
 
         java_path = params[:java_path] || 'java'
-        cmd = "#{java_path} -jar \"#{jar_path}\" -appid \"#{params[:app_id]}\" -appkey \"#{params[:app_key]}\" -bundleid \"#{params[:bundle_id]}\" -version \"#{params[:version]}\" -platform \"#{params[:platform]}\" -inputSymbol \"#{unzip_path}\""
+        cmd = "#{java_path} -jar \"#{jar_path}\" -appid \"#{params[:app_id]}\" -appkey \"#{params[:app_key]}\" -bundleid \"#{params[:bundle_id]}\" -version \"#{params[:version]}\" -buildNo \"#{params[:build_no]}\" -platform \"#{params[:platform]}\" -inputSymbol \"#{unzip_path}\" -inputMapping \"#{mapping_file_path}\""
 
         log_file = "dSYM_upload_result.log"
 
@@ -104,13 +117,30 @@ module Fastlane
                                        verify_block: proc do |value|
                                          UI.user_error!("No symbol type for UploadDsymToBuglyAction given, pass using `version: 'version'`") unless (value and not value.empty?)
                                        end),
+          FastlaneCore::ConfigItem.new(key: :build_no,
+                                        env_name: "FL_UPLOAD_DSYM_TO_BUGLY_VERSION",
+                                        description: "build no",
+                                        is_string: true,
+                                        verify_block: proc do |value|
+                                          UI.user_error!("No symbol type for UploadDsymToBuglyAction given, pass using `build_no: 'build_no'`") unless (value and not value.empty?)
+                                        end,
+                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :file_path,
                                        env_name: "FL_UPLOAD_DSYM_TO_BUGLY_FILE",
                                        description: "file path",
                                        is_string: true,
                                        verify_block: proc do |value|
-                                         UI.user_error!("No symbol type for UploadDsymToBuglyAction given, pass using `file_path: 'file_path'`") unless (value and not value.empty?)
-                                       end),
+                                          UI.user_error!("No symbol type for UploadDsymToBuglyAction given, pass using `file_path: 'file_path'`") unless (value and not value.empty?)
+                                       end,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :mapping_file_path,
+                                       env_name: "FL_UPLOAD_DSYM_TO_BUGLY_FILE",
+                                       description: "mapping file path",
+                                       is_string: true,
+                                       verify_block: proc do |value|
+                                          UI.user_error!("No symbol type for UploadDsymToBuglyAction given, pass using `mapping_file_path: 'mapping_file_path'`") unless (value and not value.empty?)
+                                       end,
+                                       optional: true),
           FastlaneCore::ConfigItem.new(key: :platform,
                                        env_name: "FL_UPLOAD_DSYM_TO_BUGLY_FILE",
                                        description: "platform",
